@@ -29,10 +29,11 @@ Windows do GitHub Actions build từ chính mã nguồn này.
 
 | Thao tác | mpv gốc | mpv-for-aoe |
 |---|---|---|
-| Lăn chuột | Âm lượng | **Zoom vào / ra quanh con trỏ** (mỗi nấc ~19%) |
+| Lăn chuột | Âm lượng | **Zoom mượt vào / ra quanh con trỏ** (mỗi nấc ~19%, chạy hoạt ảnh thay vì nhảy) |
 | Ctrl + lăn chuột | Zoom quanh con trỏ | Zoom từng bước nhỏ (~3,5%) |
 | Giữ chuột trái và kéo | Kéo cả cửa sổ đi chỗ khác | **Di chuyển khung nhìn** khi đang zoom (như Ctrl + kéo của mpv gốc); muốn dời cửa sổ thì kéo thanh tiêu đề |
 | Bấm chuột giữa | Không làm gì | **Về toàn bản đồ** (bỏ zoom và di chuyển) |
+| Giữ phím mũi tên | Tua 5 giây / 1 phút | **Di chuyển khung nhìn** như máy quay trong game, giữ phím thì lướt liên tục |
 | Shift + lăn chuột | Không làm gì | Âm lượng |
 | Hết video | Đóng cửa sổ | Dừng ở khung cuối để xem kết quả trận |
 
@@ -47,6 +48,19 @@ Windows do GitHub Actions build từ chính mã nguồn này.
 - **Sửa lỗi video nhảy sát mép**: video toàn bản đồ rộng hơn tỉ lệ màn hình 16:9 nên vừa khít chiều ngang cửa sổ;
   mpv gốc khi đó chia cho 0 lúc kéo chuột hoặc zoom về mức ban đầu, làm khung nhìn nhảy sát mép.
 - **Sửa lỗi zoom bằng màn hình cảm ứng** (biến toạ độ chưa khởi tạo trong mpv gốc).
+- **Zoom và kéo mượt khi đang phát video 9216 px**: đo trên laptop Iris Xe, bản trước chỉ cập nhật khung nhìn được
+  vài lần mỗi giây trong lúc phát. Ba nguyên nhân đã sửa:
+  - Mỗi bước zoom/kéo làm đổi lề video, mpv báo "cửa sổ đổi kích thước" và đọc lại `current-window-scale`; lần
+    đọc này chờ luồng vẽ đang bận đưa khung 9216 px lên GPU (~10 ms mỗi khung), có lúc chờ hàng trăm ms. Nay kích
+    thước cửa sổ được dùng lại khi cửa sổ không thật sự đổi kích thước (`player/command.c`).
+  - Menu chuột phải dựng lại toàn bộ dữ liệu mỗi khi zoom/căn chỉnh đổi, vì có mục "đánh dấu" theo `video-zoom`,
+    `video-align`, `video-pan`; đã bỏ các điều kiện đó (`etc/menu.conf`).
+  - Script zoom/kéo giữ trạng thái khung nhìn, tính mỗi bước tại chỗ và gửi lệnh không chờ; lệnh đến dồn thì gộp
+    lại, chỉ gửi giá trị mới nhất. Timer chạy 120 Hz (đồng hồ Windows mặc định làm timer 60 Hz chỉ chạy ~33 lần/s).
+  - Khi đang phát, mpv gốc chỉ vẽ lại theo nhịp khung video (25 lần/s) nên zoom/kéo cũng chỉ mượt 25 lần/s; nay vẽ
+    lại ngay giữa hai khung video khi khung nhìn đổi, tối đa bằng tần số màn hình (`player/playloop.c`).
+- **Thu nhỏ rẻ trong lúc chuyển động**: vẽ lại khung 9216 px với `hermite` tốn ~14 ms trên GPU tích hợp, với
+  `bilinear` ~1 ms. Trong lúc zoom/kéo dùng `bilinear`, dừng 0,3 s thì tự trả lại `hermite` để ảnh tĩnh mịn.
 - **Giải mã bằng CPU nhiều luồng** (mặc định của mpv): đo trên CPU 16 luồng, video 9216x4690 giải mã 61 khung/s, đủ
   phát mượt 25 khung/s. Bản Windows build tĩnh, chỉ gồm `mpv.exe`/`mpv.com`, không cần cài thêm thư viện.
 
@@ -71,8 +85,11 @@ Lần đầu chạy, Windows có thể hiện "Windows protected your PC" vì fi
 | Bấm chuột giữa / `Alt+Backspace` | Về toàn bản đồ |
 | Nhấp đúp chuột trái / `f` | Bật/tắt toàn màn hình |
 | Dấu cách | Dừng / phát |
-| Mũi tên trái / phải | Lùi / tới 5 giây |
-| Mũi tên lên / xuống | Tới / lùi 1 phút |
+| Phím mũi tên | Di chuyển khung nhìn sang trái / phải / lên / xuống (giữ phím để lướt) |
+| Shift + mũi tên trái / phải | Lùi / tới 1 giây |
+| Shift + mũi tên xuống / lên | Lùi / tới 5 giây |
+| `Shift+PgDn` / `Shift+PgUp` | Lùi / tới 10 phút |
+| Bấm vào thanh tiến độ phía dưới | Tua tới vị trí đó |
 | `.` và `,` | Tới / lùi từng khung hình (khi dừng) |
 | `[` và `]` | Giảm / tăng tốc độ phát; `Backspace` về tốc độ thường |
 | Shift + lăn chuột | Âm lượng |
@@ -99,6 +116,28 @@ WHEEL_UP   script-binding positioning/cursor-centric-zoom  0.5
 WHEEL_DOWN script-binding positioning/cursor-centric-zoom -0.5
 ```
 
+Muốn phím mũi tên tua như mpv gốc, thêm vào `portable_config\input.conf`:
+
+```
+RIGHT seek  5
+LEFT  seek -5
+UP    seek  60
+DOWN  seek -60
+```
+
+Độ mượt và tốc độ chỉnh trong `portable_config\script-opts\positioning.conf`:
+
+```
+# thời gian zoom đuổi kịp con lăn, giây (0,25 mặc định; nhỏ hơn = nhanh hơn)
+zoom_smoothness=0.25
+# no = mỗi nấc zoom nhảy ngay như mpv gốc
+smooth_zoom=yes
+# tốc độ di chuyển bằng phím mũi tên, chiều cao cửa sổ mỗi giây
+camera_speed=1.0
+# no = luôn thu nhỏ bằng dscale đã cấu hình, kể cả lúc đang zoom/kéo
+fast_scaling_in_motion=yes
+```
+
 Muốn phóng to mịn như mpv gốc thay vì giữ ô pixel, thêm `scale=lanczos` vào `portable_config\mpv.conf`.
 
 ## Kiểm tra file tải về
@@ -117,7 +156,8 @@ Lệnh trả về commit và lần chạy workflow đã tạo ra file. Mã băm 
 `mpv-for-aoe-win64.zip.sha256` (trên trang Release); `VERSION.txt` ghi commit nguồn.
 
 Toàn bộ thay đổi so với mpv gốc: `git diff upstream/master...aoe`, gồm `etc/input.conf`, `player/lua/positioning.lua`,
-`video/out/gpu/video.c`, `options/options.c`, `input/input.c`, workflow build và README này.
+`video/out/gpu/video.c`, `options/options.c`, `input/input.c`, `player/command.c`, `player/playloop.c`, `etc/menu.conf`,
+workflow build và README này.
 
 ## Dành cho người duy trì
 

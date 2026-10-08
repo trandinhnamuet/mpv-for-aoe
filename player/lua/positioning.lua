@@ -144,12 +144,35 @@ local restore_scaling_timer = mp.add_timeout(0.3, function ()
 end)
 restore_scaling_timer:kill()
 
+-- The first switch to bilinear compiles its shaders, which stalled the first
+-- zoom of a session by ~100 ms; do that once while the video starts instead.
+local prewarm_scaling
+mp.register_event("file-loaded", function ()
+    if not options.fast_scaling_in_motion or saved_scaling or prewarm_scaling then
+        return
+    end
+    prewarm_scaling = {
+        dscale = mp.get_property("dscale"),
+        correct = mp.get_property("correct-downscaling"),
+    }
+    mp.command_native_async({ "no-osd", "set", "dscale", "bilinear" }, function () end)
+    mp.command_native_async({ "no-osd", "set", "correct-downscaling", "no" }, function () end)
+    mp.add_timeout(0.2, function ()
+        -- a motion that started meanwhile restores these when it ends
+        if not saved_scaling then
+            mp.command_native_async({ "no-osd", "set", "dscale", prewarm_scaling.dscale }, function () end)
+            mp.command_native_async({ "no-osd", "set", "correct-downscaling", prewarm_scaling.correct }, function () end)
+        end
+        prewarm_scaling = nil
+    end)
+end)
+
 local function view_moving()
     if not options.fast_scaling_in_motion then
         return
     end
     if not saved_scaling then
-        saved_scaling = {
+        saved_scaling = prewarm_scaling or {
             dscale = mp.get_property("dscale"),
             correct = mp.get_property("correct-downscaling"),
         }
@@ -216,6 +239,7 @@ mp.add_key_binding(nil, "drag-to-pan", function (t)
     if drag or not p then
         return
     end
+    mouse = mp.get_property_native("mouse-pos") or mouse
     drag = {
         x = mouse.x, y = mouse.y, last_x = mouse.x, last_y = mouse.y,
         ml = margin(p.w, p.vw, view.ax, view.pan_x),
@@ -308,6 +332,8 @@ mp.add_key_binding(nil, "cursor-centric-zoom", function (t)
         return
     end
 
+    -- read now rather than from the observer, which may not have caught up
+    mouse = mp.get_property_native("mouse-pos") or mouse
     local x, y = mouse.x, mouse.y
     local touch_positions = mp.get_property_native("touch-pos")
     if touch_positions[1] then
