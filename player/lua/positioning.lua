@@ -18,6 +18,10 @@ License along with mpv.  If not, see <http://www.gnu.org/licenses/>.
 local options = {
     toggle_align_to_cursor = false,
     suppress_osd = false,
+    -- [mpv-for-aoe] cursor-centric-zoom keeps video-zoom inside this range,
+    -- so the wheel never shrinks the video below the window fit.
+    zoom_min = 0,
+    zoom_max = 6,
 }
 
 require "mp.options".read_options(options, nil, function () end)
@@ -79,12 +83,18 @@ mp.add_key_binding(nil, "drag-to-pan", function (t)
         -- so the equation to find how much video-align to add to offset the OSD
         -- by the difference in mouse position is:
         -- x/1 = (mouse_pos - old_mouse_pos) / ((dimension - osd_dimension) / 2)
-        local align = old_align_x + 2 * (mouse_pos.x - old_mouse_pos.x)
-                      / (dims.ml + dims.mr)
-        mp.set_property("video-align-x", clamp(align, -1, 1))
-        align = old_align_y + 2 * (mouse_pos.y - old_mouse_pos.y)
-                / (dims.mt + dims.mb)
-        mp.set_property("video-align-y", clamp(align, -1, 1))
+        -- An axis where the video exactly fills the window has no margin to
+        -- move in; dividing by 0 would snap it to an edge, so skip it.
+        if dims.ml + dims.mr ~= 0 then
+            local align = old_align_x + 2 * (mouse_pos.x - old_mouse_pos.x)
+                          / (dims.ml + dims.mr)
+            mp.set_property("video-align-x", clamp(align, -1, 1))
+        end
+        if dims.mt + dims.mb ~= 0 then
+            local align = old_align_y + 2 * (mouse_pos.y - old_mouse_pos.y)
+                          / (dims.mt + dims.mb)
+            mp.set_property("video-align-y", clamp(align, -1, 1))
+        end
     end)
 end, { complex = true })
 
@@ -130,6 +140,11 @@ mp.add_key_binding(nil, "cursor-centric-zoom", function (t)
     end
 
     local amount = t.arg * t.scale
+    local zoom = mp.get_property_native("video-zoom")
+    amount = clamp(zoom + amount, options.zoom_min, options.zoom_max) - zoom
+    if amount == 0 then
+        return
+    end
 
     local command = (options.suppress_osd and "no-osd " or "") ..
                     "add video-zoom " .. amount .. ";"
@@ -137,6 +152,7 @@ mp.add_key_binding(nil, "cursor-centric-zoom", function (t)
     local x, y
     local touch_positions = mp.get_property_native("touch-pos")
     if touch_positions[1] then
+        x, y = 0, 0
         for _, position in pairs(touch_positions) do
             x = x + position.x
             y = y + position.y
@@ -159,13 +175,21 @@ mp.add_key_binding(nil, "cursor-centric-zoom", function (t)
     -- video/out/aspect.c:src_dst_split_scaling() defines ml as:
     -- ml = (osd-width - width) * (video-align-x + 1) / 2 + pan-x * width
     -- So video-align-x is:
-    local align = 2 * (ml - mp.get_property_native("video-pan-x") * width)
-                  / (dims.w - width) - 1
+    -- When the zoomed video exactly fills an axis, alignment has no effect on
+    -- it and the division is by 0, so center it instead.
+    local align = 0
+    if math.abs(dims.w - width) >= 0.5 then
+        align = 2 * (ml - mp.get_property_native("video-pan-x") * width)
+                / (dims.w - width) - 1
+    end
     command = command .. "no-osd set video-align-x " .. clamp(align, -1, 1) .. ";"
 
     local mt = (dims.mt - y) * 2^amount + y
-    align = 2 * (mt - mp.get_property_native("video-pan-y") * height)
-            / (dims.h - height) - 1
+    align = 0
+    if math.abs(dims.h - height) >= 0.5 then
+        align = 2 * (mt - mp.get_property_native("video-pan-y") * height)
+                / (dims.h - height) - 1
+    end
     command = command .. "no-osd set video-align-y " .. clamp(align, -1, 1)
 
     mp.command(command)

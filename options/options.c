@@ -1045,6 +1045,8 @@ static const struct MPOpts mp_default_opts = {
     .chapter_merge_threshold = 100,
     .chapter_seek_threshold = 5.0,
     .hr_seek = 2,
+    // [mpv-for-aoe] stay on the last frame of a match instead of closing.
+    .keep_open = 1,
     .hr_seek_framedrop = true,
     .sync_max_video_change = 1,
     .sync_max_audio_change = 0.125,

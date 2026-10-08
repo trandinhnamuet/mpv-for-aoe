@@ -1,3 +1,7 @@
+> **mpv-for-aoe**: bản fork của mpv chỉnh sẵn để xem lại video toàn bản đồ Age of Empires (lăn chuột zoom quanh con trỏ,
+> kéo chuột di chuyển). Hướng dẫn, tải về và danh sách thay đổi: [AOE-README.md](AOE-README.md).
+> Phần dưới đây là README gốc của mpv.
+
 ![mpv logo](https://raw.githubusercontent.com/mpv-player/mpv.io/master/source/images/mpv-logo-128.png)
 
 # mpv

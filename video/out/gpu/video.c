@@ -370,7 +370,8 @@ static const struct gl_video_opts gl_video_opts_def = {
     .sigmoid_slope = 6.5,
     .scaler = {
         [SCALER_SCALE] =  {
-            {SCALER_LANCZOS, .params = {NAN, NAN}, .functions = scale_filters},
+            // [mpv-for-aoe] game pixel art: zooming past 1:1 keeps hard pixels.
+            {SCALER_NEAREST, .params = {NAN, NAN}, .functions = scale_filters},
             {WINDOW_PREFERRED, .params = {NAN, NAN}, .functions = filter_windows},
         },
         [SCALER_DSCALE] = {
@@ -378,7 +379,8 @@ static const struct gl_video_opts gl_video_opts_def = {
             {WINDOW_PREFERRED, .params = {NAN, NAN}, .functions = filter_windows},
         },
         [SCALER_CSCALE] = {
-            {SCALER_INHERIT, .params = {NAN, NAN}, .functions = cdscale_filters},
+            // [mpv-for-aoe] scale is nearest; keep 4:2:0 chroma smooth.
+            {SCALER_BILINEAR, .params = {NAN, NAN}, .functions = cdscale_filters},
             {WINDOW_PREFERRED, .params = {NAN, NAN}, .functions = filter_windows},
         },
         [SCALER_TSCALE] = {
