@@ -695,16 +695,8 @@ static void handle_osd_redraw(struct MPContext *mpctx)
     // If we're playing normally, let OSD be redrawn naturally as part of
     // video display.
     if (!mpctx->paused) {
-        if (mpctx->sleeptime < 0.1 && mpctx->video_status == STATUS_PLAYING) {
-            // [mpv-for-aoe] Still redraw between video frames when the VO
-            // asks for it, e.g. after video-zoom/video-align changes: otherwise
-            // zooming and panning a 25 fps video only move at 25 fps. The VO
-            // limits such redraws to the display rate and to the time before
-            // the next frame is due.
-            if (mpctx->video_out && vo_want_redraw(mpctx->video_out))
-                vo_redraw(mpctx->video_out);
+        if (mpctx->sleeptime < 0.1 && mpctx->video_status == STATUS_PLAYING)
             return;
-        }
     }
     // Don't redraw immediately during a seek (makes it significantly slower).
     bool use_video = mpctx->vo_chain && !mpctx->vo_chain->is_sparse;

@@ -31,8 +31,9 @@ local options = {
     -- [mpv-for-aoe] camera-* bindings: window heights per second while held.
     camera_speed = 1.0,
     -- [mpv-for-aoe] while zooming or panning, downscale with plain bilinear
-    -- and restore the configured dscale once the view stops; redrawing a
-    -- 9216 px frame with hermite costs ~14 ms on an integrated GPU vs ~1 ms.
+    -- and sync to the display, restoring the configured dscale and
+    -- video-sync once the view stops; redrawing a 9216 px frame with hermite
+    -- costs ~14 ms on an integrated GPU vs ~1 ms.
     fast_scaling_in_motion = true,
 }
 
@@ -139,6 +140,7 @@ local restore_scaling_timer = mp.add_timeout(0.3, function ()
     if saved_scaling then
         mp.command_native_async({ "no-osd", "set", "dscale", saved_scaling.dscale }, function () end)
         mp.command_native_async({ "no-osd", "set", "correct-downscaling", saved_scaling.correct }, function () end)
+        mp.command_native_async({ "no-osd", "set", "video-sync", saved_scaling.video_sync }, function () end)
         saved_scaling = nil
     end
 end)
@@ -176,8 +178,15 @@ local function view_moving()
             dscale = mp.get_property("dscale"),
             correct = mp.get_property("correct-downscaling"),
         }
+        saved_scaling.video_sync = mp.get_property("video-sync")
         mp.command_native_async({ "no-osd", "set", "dscale", "bilinear" }, function () end)
         mp.command_native_async({ "no-osd", "set", "correct-downscaling", "no" }, function () end)
+        -- While playing, the VO draws the next video frame ahead and sleeps
+        -- until it is due, so view changes only show at the video frame rate
+        -- (25 fps). Syncing to the display renders every vsync instead; it is
+        -- only used while the view moves because a VO that cannot keep up
+        -- slows playback down in this mode instead of dropping frames.
+        mp.command_native_async({ "no-osd", "set", "video-sync", "display-resample" }, function () end)
     end
     restore_scaling_timer:kill()
     restore_scaling_timer:resume()

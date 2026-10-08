@@ -57,8 +57,10 @@ Windows do GitHub Actions build từ chính mã nguồn này.
     `video-align`, `video-pan`; đã bỏ các điều kiện đó (`etc/menu.conf`).
   - Script zoom/kéo giữ trạng thái khung nhìn, tính mỗi bước tại chỗ và gửi lệnh không chờ; lệnh đến dồn thì gộp
     lại, chỉ gửi giá trị mới nhất. Timer chạy 120 Hz (đồng hồ Windows mặc định làm timer 60 Hz chỉ chạy ~33 lần/s).
-  - Khi đang phát, mpv gốc chỉ vẽ lại theo nhịp khung video (25 lần/s) nên zoom/kéo cũng chỉ mượt 25 lần/s; nay vẽ
-    lại ngay giữa hai khung video khi khung nhìn đổi, tối đa bằng tần số màn hình (`player/playloop.c`).
+  - Khi đang phát, mpv vẽ sẵn khung video kế tiếp rồi chờ tới lúc hiển thị, nên zoom/kéo chỉ hiện theo nhịp video
+    (25 lần/s). Trong lúc zoom/kéo, script chuyển sang `video-sync=display-resample` (vẽ theo từng nhịp quét màn
+    hình), dừng 0,3 s thì trả lại chế độ cũ. Không bật cố định vì máy không theo kịp thì chế độ này làm video chậm
+    lại thay vì bỏ khung.
 - **Thu nhỏ rẻ trong lúc chuyển động**: vẽ lại khung 9216 px với `hermite` tốn ~14 ms trên GPU tích hợp, với
   `bilinear` ~1 ms. Trong lúc zoom/kéo dùng `bilinear`, dừng 0,3 s thì tự trả lại `hermite` để ảnh tĩnh mịn.
 - **Giải mã bằng CPU nhiều luồng** (mặc định của mpv): đo trên CPU 16 luồng, video 9216x4690 giải mã 61 khung/s, đủ
@@ -134,7 +136,7 @@ zoom_smoothness=0.25
 smooth_zoom=yes
 # tốc độ di chuyển bằng phím mũi tên, chiều cao cửa sổ mỗi giây
 camera_speed=1.0
-# no = luôn thu nhỏ bằng dscale đã cấu hình, kể cả lúc đang zoom/kéo
+# no = lúc đang zoom/kéo vẫn giữ dscale và video-sync đã cấu hình (không đổi sang bilinear, display-resample)
 fast_scaling_in_motion=yes
 ```
 
@@ -156,8 +158,8 @@ Lệnh trả về commit và lần chạy workflow đã tạo ra file. Mã băm 
 `mpv-for-aoe-win64.zip.sha256` (trên trang Release); `VERSION.txt` ghi commit nguồn.
 
 Toàn bộ thay đổi so với mpv gốc: `git diff upstream/master...aoe`, gồm `etc/input.conf`, `player/lua/positioning.lua`,
-`video/out/gpu/video.c`, `options/options.c`, `input/input.c`, `player/command.c`, `player/playloop.c`, `etc/menu.conf`,
-workflow build và README này.
+`video/out/gpu/video.c`, `options/options.c`, `input/input.c`, `player/command.c`, `etc/menu.conf`, workflow build và
+README này.
 
 ## Dành cho người duy trì
 
