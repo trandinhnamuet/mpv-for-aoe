@@ -127,6 +127,11 @@ struct command_ctx {
     int hwdec_osd_mode;
 
     double cached_window_scale;
+
+    // [mpv-for-aoe] Last VOCTRL_GET_UNFS_WINDOW_SIZE result and the OSD size
+    // it was read at, see mp_property_current_window_scale().
+    int cached_unfs_size[2];
+    int cached_unfs_osd_size[2];
 };
 
 static const struct m_option script_props_type = {
@@ -2835,13 +2840,33 @@ static int mp_property_current_window_scale(void *ctx, struct m_property *prop,
         if (s[0] <= 0 || s[1] <= 0)
             return M_PROPERTY_INVALID_FORMAT;
         vo_control(vo, VOCTRL_SET_UNFS_WINDOW_SIZE, s);
+        mpctx->command_ctx->cached_unfs_size[0] = 0;
         return M_PROPERTY_OK;
     }
 
+    // [mpv-for-aoe] Zooming or panning the video changes the OSD margins,
+    // which notifies window resize observers, and reading the window size
+    // waits on the VO thread. While a 9216 px video plays the VO is busy with
+    // ~10 ms uploads, so every pan step stalled the core for tens of ms. The
+    // unfullscreened window size can only change with the OSD size or through
+    // the setter above, so reuse the last answer while the OSD size is the same.
+    struct command_ctx *cmd = mpctx->command_ctx;
+    struct mp_osd_res res = osd_get_vo_res(mpctx->osd);
     int s[2];
-    if (vo_control(vo, VOCTRL_GET_UNFS_WINDOW_SIZE, s) <= 0 ||
-        s[0] < 1 || s[1] < 1)
-        return M_PROPERTY_UNAVAILABLE;
+    if (cmd->cached_unfs_size[0] > 0 && cmd->cached_unfs_osd_size[0] == res.w &&
+        cmd->cached_unfs_osd_size[1] == res.h)
+    {
+        s[0] = cmd->cached_unfs_size[0];
+        s[1] = cmd->cached_unfs_size[1];
+    } else {
+        if (vo_control(vo, VOCTRL_GET_UNFS_WINDOW_SIZE, s) <= 0 ||
+            s[0] < 1 || s[1] < 1)
+            return M_PROPERTY_UNAVAILABLE;
+        cmd->cached_unfs_size[0] = s[0];
+        cmd->cached_unfs_size[1] = s[1];
+        cmd->cached_unfs_osd_size[0] = res.w;
+        cmd->cached_unfs_osd_size[1] = res.h;
+    }
 
     double xs = (double)s[0] / vid_w;
     double ys = (double)s[1] / vid_h;

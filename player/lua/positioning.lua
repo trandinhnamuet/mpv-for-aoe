@@ -22,6 +22,18 @@ local options = {
     -- so the wheel never shrinks the video below the window fit.
     zoom_min = 0,
     zoom_max = 6,
+    -- [mpv-for-aoe] animate cursor-centric-zoom instead of jumping a whole
+    -- wheel step at once. The zoom follows the wheel like a critically damped
+    -- spring: it starts and stops softly and keeps its speed when more wheel
+    -- steps arrive. zoom_smoothness is roughly the settle time in seconds.
+    smooth_zoom = true,
+    zoom_smoothness = 0.25,
+    -- [mpv-for-aoe] camera-* bindings: window heights per second while held.
+    camera_speed = 1.0,
+    -- [mpv-for-aoe] while zooming or panning, downscale with plain bilinear
+    -- and restore the configured dscale once the view stops; redrawing a
+    -- 9216 px frame with hermite costs ~14 ms on an integrated GPU vs ~1 ms.
+    fast_scaling_in_motion = true,
 }
 
 require "mp.options".read_options(options, nil, function () end)
@@ -66,36 +78,150 @@ mp.add_key_binding(nil, "pan-y", function (t)
     mp.commandv("add", "video-align-y", clamp(amount, -2, 2))
 end, { complex = true, scalable = true })
 
-mp.add_key_binding(nil, "drag-to-pan", function (t)
-    if t.event == "up" then
-        mp.remove_key_binding("drag-to-pan-mouse-move")
-        return
-    end
+-- [mpv-for-aoe] The view (zoom and alignment) is kept in the script and sent
+-- asynchronously. Getting and setting properties synchronously makes every
+-- step wait for the core, and while a 9216 px video plays the core is busy
+-- with the other scripts reacting to each change: animations got only a few
+-- steps per second. So the values are observed, steps are computed locally,
+-- and while a send is in flight newer steps only replace what is sent next.
+local view = { zoom = 0, ax = 0, ay = 0, pan_x = 0, pan_y = 0 }
+local dims, params
+local mouse = { x = 0, y = 0 }
+local in_flight = 0
+local queued = false
 
-    local dims = mp.get_property_native("osd-dimensions")
-    local old_mouse_pos = mp.get_property_native("mouse-pos")
-    local old_align_x = mp.get_property_native("video-align-x")
-    local old_align_y = mp.get_property_native("video-align-y")
-
-    mp.add_forced_key_binding("MOUSE_MOVE", "drag-to-pan-mouse-move", function ()
-        local mouse_pos = mp.get_property_native("mouse-pos")
-        -- 1 video-align shifts the OSD by (dimension - osd_dimension) / 2 pixels,
-        -- so the equation to find how much video-align to add to offset the OSD
-        -- by the difference in mouse position is:
-        -- x/1 = (mouse_pos - old_mouse_pos) / ((dimension - osd_dimension) / 2)
-        -- An axis where the video exactly fills the window has no margin to
-        -- move in; dividing by 0 would snap it to an edge, so skip it.
-        if dims.ml + dims.mr ~= 0 then
-            local align = old_align_x + 2 * (mouse_pos.x - old_mouse_pos.x)
-                          / (dims.ml + dims.mr)
-            mp.set_property("video-align-x", clamp(align, -1, 1))
-        end
-        if dims.mt + dims.mb ~= 0 then
-            local align = old_align_y + 2 * (mouse_pos.y - old_mouse_pos.y)
-                          / (dims.mt + dims.mb)
-            mp.set_property("video-align-y", clamp(align, -1, 1))
+for property, key in pairs({ ["video-zoom"] = "zoom", ["video-align-x"] = "ax",
+                             ["video-align-y"] = "ay", ["video-pan-x"] = "pan_x",
+                             ["video-pan-y"] = "pan_y" }) do
+    mp.observe_property(property, "number", function (_, value)
+        -- while our own sends are pending, these are their echoes
+        if value and in_flight == 0 and not queued then
+            view[key] = value
         end
     end)
+end
+mp.observe_property("osd-dimensions", "native", function (_, value) dims = value end)
+mp.observe_property("video-params", "native", function (_, value) params = value end)
+mp.observe_property("mouse-pos", "native", function (_, value)
+    if value then
+        mouse = value
+    end
+end)
+
+local function send_view()
+    in_flight = 3
+    local function done()
+        in_flight = in_flight - 1
+        if in_flight == 0 and queued then
+            queued = false
+            send_view()
+        end
+    end
+    mp.command_native_async({ "no-osd", "set", "video-zoom", tostring(view.zoom) }, done)
+    mp.command_native_async({ "no-osd", "set", "video-align-x", tostring(view.ax) }, done)
+    mp.command_native_async({ "no-osd", "set", "video-align-y", tostring(view.ay) }, done)
+end
+
+local function set_view(zoom, ax, ay)
+    view.zoom, view.ax, view.ay = zoom, ax, ay
+    if in_flight > 0 then
+        queued = true
+    else
+        send_view()
+    end
+end
+
+-- [mpv-for-aoe] Cheap downscaling while the view moves. Every zoom/pan step
+-- re-renders the whole frame, so the configured dscale is swapped for
+-- bilinear on the first step and restored after the view rests.
+local saved_scaling
+local restore_scaling_timer = mp.add_timeout(0.3, function ()
+    if saved_scaling then
+        mp.command_native_async({ "no-osd", "set", "dscale", saved_scaling.dscale }, function () end)
+        mp.command_native_async({ "no-osd", "set", "correct-downscaling", saved_scaling.correct }, function () end)
+        saved_scaling = nil
+    end
+end)
+restore_scaling_timer:kill()
+
+local function view_moving()
+    if not options.fast_scaling_in_motion then
+        return
+    end
+    if not saved_scaling then
+        saved_scaling = {
+            dscale = mp.get_property("dscale"),
+            correct = mp.get_property("correct-downscaling"),
+        }
+        mp.command_native_async({ "no-osd", "set", "dscale", "bilinear" }, function () end)
+        mp.command_native_async({ "no-osd", "set", "correct-downscaling", "no" }, function () end)
+    end
+    restore_scaling_timer:kill()
+    restore_scaling_timer:resume()
+end
+
+-- [mpv-for-aoe] Video placement computed the way video/out/aspect.c does it,
+-- rather than read back from osd-dimensions margins, which only update after
+-- the VO renders and lag behind animation steps.
+local function placement(zoom)
+    if not dims or not params or not params.dw or dims.w <= 0 then
+        return nil
+    end
+    local fit = math.min(dims.w / params.dw, dims.h / params.dh)
+    return {
+        w = dims.w, h = dims.h,
+        vw = params.dw * fit * 2^zoom, vh = params.dh * fit * 2^zoom,
+        video_w = params.w,
+    }
+end
+
+-- Left/top margin of the video for an alignment, and back.
+local function margin(size, video_size, align, pan)
+    return (size - video_size) * (align + 1) / 2 + pan * video_size
+end
+
+local function align_for(size, video_size, m, pan)
+    -- When the video exactly fills an axis, alignment has no effect on it and
+    -- the division is by 0, so center it instead.
+    if math.abs(size - video_size) < 0.5 then
+        return 0
+    end
+    return clamp(2 * (m - pan * video_size) / (size - video_size) - 1, -1, 1)
+end
+
+-- Drag: the point grabbed stays under the cursor. Applied from a timer on the
+-- observed mouse position rather than per MOUSE_MOVE event, so a burst of
+-- mouse events costs one step per frame.
+local drag
+local drag_timer = mp.add_periodic_timer(1 / 120, function ()
+    local p = placement(view.zoom)
+    if not drag or not p or (mouse.x == drag.last_x and mouse.y == drag.last_y) then
+        return
+    end
+    drag.last_x, drag.last_y = mouse.x, mouse.y
+    view_moving()
+    set_view(view.zoom,
+             align_for(p.w, p.vw, drag.ml + mouse.x - drag.x, view.pan_x),
+             align_for(p.h, p.vh, drag.mt + mouse.y - drag.y, view.pan_y))
+end)
+drag_timer:kill()
+
+mp.add_key_binding(nil, "drag-to-pan", function (t)
+    if t.event == "up" then
+        drag = nil
+        drag_timer:kill()
+        return
+    end
+    local p = placement(view.zoom)
+    if drag or not p then
+        return
+    end
+    drag = {
+        x = mouse.x, y = mouse.y, last_x = mouse.x, last_y = mouse.y,
+        ml = margin(p.w, p.vw, view.ax, view.pan_x),
+        mt = margin(p.h, p.vh, view.ay, view.pan_y),
+    }
+    drag_timer:resume()
 end, { complex = true })
 
 
@@ -133,23 +259,56 @@ mp.add_key_binding(nil, "align-to-cursor", function (t)
 end, { complex = true })
 
 
+-- [mpv-for-aoe] Zoom by amount (log2) keeping the point under x, y still.
+local function zoom_around(amount, x, y)
+    local before = placement(view.zoom)
+    local after = placement(view.zoom + amount)
+    if not before then
+        return
+    end
+    local ml = (margin(before.w, before.vw, view.ax, view.pan_x) - x) * 2^amount + x
+    local mt = (margin(before.h, before.vh, view.ay, view.pan_y) - y) * 2^amount + y
+    set_view(view.zoom + amount,
+             align_for(after.w, after.vw, ml, view.pan_x),
+             align_for(after.h, after.vh, mt, view.pan_y))
+    if not options.suppress_osd and after.video_w then
+        local text = string.format("Zoom %d%%", math.floor(after.vw / after.video_w * 100 + 0.5))
+        mp.command_native_async({ "show-text", text, "1000" }, function () end)
+    end
+end
+
+-- Animated zoom: the wheel moves the target and the zoom follows it like a
+-- critically damped spring around the latest cursor position.
+local zoom_target, zoom_x, zoom_y, zoom_last_tick
+local zoom_velocity = 0
+local zoom_timer
+zoom_timer = mp.add_periodic_timer(1 / 120, function ()
+    local now = mp.get_time()
+    -- a stalled frame must not turn into one big jump
+    local dt = math.min(math.max(now - zoom_last_tick, 0.001), 1 / 30)
+    zoom_last_tick = now
+    local omega = 4.5 / options.zoom_smoothness
+    local diff = zoom_target - view.zoom
+    zoom_velocity = zoom_velocity + (omega * omega * diff - 2 * omega * zoom_velocity) * dt
+    local step = zoom_velocity * dt
+    if math.abs(diff - step) < 0.001 and math.abs(zoom_velocity) < 0.05 then
+        step = diff
+        zoom_timer:kill()
+        zoom_target = nil
+        zoom_velocity = 0
+    end
+    view_moving()
+    zoom_around(step, zoom_x, zoom_y)
+end)
+zoom_timer:kill()
+
 mp.add_key_binding(nil, "cursor-centric-zoom", function (t)
     if t.arg == nil or t.arg == "" then
         mp.osd_message("Usage: script-binding positioning/cursor-centric-zoom <amount>")
         return
     end
 
-    local amount = t.arg * t.scale
-    local zoom = mp.get_property_native("video-zoom")
-    amount = clamp(zoom + amount, options.zoom_min, options.zoom_max) - zoom
-    if amount == 0 then
-        return
-    end
-
-    local command = (options.suppress_osd and "no-osd " or "") ..
-                    "add video-zoom " .. amount .. ";"
-
-    local x, y
+    local x, y = mouse.x, mouse.y
     local touch_positions = mp.get_property_native("touch-pos")
     if touch_positions[1] then
         x, y = 0, 0
@@ -159,38 +318,90 @@ mp.add_key_binding(nil, "cursor-centric-zoom", function (t)
         end
         x = x / #touch_positions
         y = y / #touch_positions
-    else
-        local mouse_pos = mp.get_property_native("mouse-pos")
-        x = mouse_pos.x
-        y = mouse_pos.y
     end
 
-    local dims = mp.get_property_native("osd-dimensions")
-    local width = (dims.w - dims.ml - dims.mr) * 2^amount
-    local height = (dims.h - dims.mt - dims.mb) * 2^amount
-
-    local old_cursor_ml = dims.ml - x
-    local cursor_ml = old_cursor_ml * 2^amount
-    local ml = cursor_ml + x
-    -- video/out/aspect.c:src_dst_split_scaling() defines ml as:
-    -- ml = (osd-width - width) * (video-align-x + 1) / 2 + pan-x * width
-    -- So video-align-x is:
-    -- When the zoomed video exactly fills an axis, alignment has no effect on
-    -- it and the division is by 0, so center it instead.
-    local align = 0
-    if math.abs(dims.w - width) >= 0.5 then
-        align = 2 * (ml - mp.get_property_native("video-pan-x") * width)
-                / (dims.w - width) - 1
+    local from = zoom_target or view.zoom
+    local target = clamp(from + t.arg * t.scale, options.zoom_min, options.zoom_max)
+    if target == from then
+        return
     end
-    command = command .. "no-osd set video-align-x " .. clamp(align, -1, 1) .. ";"
 
-    local mt = (dims.mt - y) * 2^amount + y
-    align = 0
-    if math.abs(dims.h - height) >= 0.5 then
-        align = 2 * (mt - mp.get_property_native("video-pan-y") * height)
-                / (dims.h - height) - 1
+    if not options.smooth_zoom then
+        view_moving()
+        zoom_around(target - view.zoom, x, y)
+        return
     end
-    command = command .. "no-osd set video-align-y " .. clamp(align, -1, 1)
 
-    mp.command(command)
+    zoom_target, zoom_x, zoom_y = target, x, y
+    if not zoom_timer:is_enabled() then
+        zoom_last_tick = mp.get_time() - 1 / 120
+        zoom_timer:resume()
+    end
 end, { complex = true, scalable = true })
+
+-- [mpv-for-aoe] Move the view like a game camera while a key is held:
+-- script-binding positioning/camera-left (also -right, -up, -down).
+local camera_held = {}
+-- a short tap still moves the view for this long
+local camera_hold_until = {}
+local camera_last_tick, camera_start
+local camera_timer
+camera_timer = mp.add_periodic_timer(1 / 120, function ()
+    local now = mp.get_time()
+    local dt = math.min(math.max(now - camera_last_tick, 0.001), 1 / 30)
+    camera_last_tick = now
+    local function held(direction)
+        return (camera_held[direction] or (camera_hold_until[direction] or 0) > now) and 1 or 0
+    end
+    local dx = held("right") - held("left")
+    local dy = held("down") - held("up")
+    if dx == 0 and dy == 0 then
+        camera_timer:kill()
+        return
+    end
+    local p = placement(view.zoom)
+    if not p then
+        return
+    end
+    -- ease in over 0.15 s so a tap moves a little and a hold glides
+    local speed = options.camera_speed * math.min(1, (now - camera_start) / 0.15 + 0.2)
+    local distance = speed * math.min(p.w, p.h) * dt
+    view_moving()
+    set_view(view.zoom,
+             align_for(p.w, p.vw, margin(p.w, p.vw, view.ax, view.pan_x) - dx * distance, view.pan_x),
+             align_for(p.h, p.vh, margin(p.h, p.vh, view.ay, view.pan_y) - dy * distance, view.pan_y))
+end)
+camera_timer:kill()
+
+for _, direction in ipairs({ "left", "right", "up", "down" }) do
+    mp.add_key_binding(nil, "camera-" .. direction, function (t)
+        if t.event == "up" then
+            camera_held[direction] = nil
+            return
+        end
+        if t.event == "repeat" then
+            return
+        end
+        -- "down" holds until "up"; a synthetic "press" is just a tap
+        camera_held[direction] = t.event == "down" or nil
+        camera_hold_until[direction] = mp.get_time() + 0.1
+        if not camera_timer:is_enabled() then
+            camera_start = mp.get_time()
+            camera_last_tick = camera_start - 1 / 120
+            camera_timer:resume()
+        end
+    end, { complex = true })
+end
+
+-- [mpv-for-aoe] Back to the whole video, stopping any zoom animation first so
+-- it does not pull the view back to its old target.
+mp.add_key_binding(nil, "reset-view", function ()
+    zoom_timer:kill()
+    zoom_target = nil
+    zoom_velocity = 0
+    mp.command_native_async({ "no-osd", "set", "panscan", "0" }, function () end)
+    mp.command_native_async({ "no-osd", "set", "video-pan-x", "0" }, function () end)
+    mp.command_native_async({ "no-osd", "set", "video-pan-y", "0" }, function () end)
+    set_view(0, 0, 0)
+    mp.command_native_async({ "show-text", "Zoom 0", "1000" }, function () end)
+end)
