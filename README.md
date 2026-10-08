@@ -31,7 +31,7 @@ Windows do GitHub Actions build từ chính mã nguồn này.
 |---|---|---|
 | Lăn chuột | Âm lượng | **Zoom vào / ra quanh con trỏ** (mỗi nấc ~19%) |
 | Ctrl + lăn chuột | Zoom quanh con trỏ | Zoom từng bước nhỏ (~3,5%) |
-| Giữ chuột trái và kéo | Kéo cửa sổ | **Di chuyển khung nhìn** khi đang zoom |
+| Giữ chuột trái và kéo | Kéo cả cửa sổ đi chỗ khác | **Di chuyển khung nhìn** khi đang zoom (như Ctrl + kéo của mpv gốc); muốn dời cửa sổ thì kéo thanh tiêu đề |
 | Bấm chuột giữa | Không làm gì | **Về toàn bản đồ** (bỏ zoom và di chuyển) |
 | Shift + lăn chuột | Không làm gì | Âm lượng |
 | Hết video | Đóng cửa sổ | Dừng ở khung cuối để xem kết quả trận |
@@ -41,6 +41,8 @@ Windows do GitHub Actions build từ chính mã nguồn này.
 - **Giữ nét pixel khi zoom quá 1:1**: phóng to dùng `nearest` thay cho `lanczos`, từng pixel game hiện thành ô vuông
   sắc nét thay vì bị nhoè. Thu nhỏ (khi xem toàn bản đồ) vẫn dùng `hermite` mịn như mpv gốc; màu (chroma 4:2:0)
   dùng `bilinear` để không bị vỡ khối màu.
+- **Kéo chuột không dời cửa sổ**: tắt mặc định `window-dragging` của mpv, nếu không Windows sẽ dời cả cửa sổ
+  ngay khi giữ chuột trái và kéo, khung nhìn không di chuyển. Bật lại bằng `window-dragging=yes` trong `mpv.conf`.
 - **Giới hạn zoom** từ vừa cửa sổ tới 64 lần: lăn chuột ra không làm video nhỏ hơn cửa sổ.
 - **Sửa lỗi video nhảy sát mép**: video toàn bản đồ rộng hơn tỉ lệ màn hình 16:9 nên vừa khít chiều ngang cửa sổ;
   mpv gốc khi đó chia cho 0 lúc kéo chuột hoặc zoom về mức ban đầu, làm khung nhìn nhảy sát mép.
@@ -115,7 +117,7 @@ Lệnh trả về commit và lần chạy workflow đã tạo ra file. Mã băm 
 `mpv-for-aoe-win64.zip.sha256` (trên trang Release); `VERSION.txt` ghi commit nguồn.
 
 Toàn bộ thay đổi so với mpv gốc: `git diff upstream/master...aoe`, gồm `etc/input.conf`, `player/lua/positioning.lua`,
-`video/out/gpu/video.c`, `options/options.c`, workflow build và README này.
+`video/out/gpu/video.c`, `options/options.c`, `input/input.c`, workflow build và README này.
 
 ## Dành cho người duy trì
 

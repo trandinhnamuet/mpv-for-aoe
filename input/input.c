@@ -261,7 +261,8 @@ const struct m_sub_options input_config = {
         .builtin_bindings = true,
         .builtin_dragging = true,
         .vo_key_input = true,
-        .allow_win_drag = true,
+        // [mpv-for-aoe] left-drag pans the zoomed video instead of moving the window.
+        .allow_win_drag = false,
         .preprocess_wheel = true,
         .touch_emulate_mouse = true,
         .tablet_emulate_mouse = true,
