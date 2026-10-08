@@ -59,10 +59,10 @@ Windows do GitHub Actions build từ chính mã nguồn này.
     lại, chỉ gửi giá trị mới nhất. Timer chạy 120 Hz (đồng hồ Windows mặc định làm timer 60 Hz chỉ chạy ~33 lần/s).
   - Khi đang phát, mpv vẽ sẵn khung video kế tiếp rồi chờ tới lúc hiển thị, nên zoom/kéo chỉ hiện theo nhịp video
     (25 lần/s). Trong lúc zoom/kéo, script chuyển sang `video-sync=display-resample` (vẽ theo từng nhịp quét màn
-    hình), dừng 0,3 s thì trả lại chế độ cũ. Không bật cố định vì máy không theo kịp thì chế độ này làm video chậm
+    hình), dừng 0,8 s thì trả lại chế độ cũ. Không bật cố định vì máy không theo kịp thì chế độ này làm video chậm
     lại thay vì bỏ khung.
 - **Thu nhỏ rẻ trong lúc chuyển động**: vẽ lại khung 9216 px với `hermite` tốn ~14 ms trên GPU tích hợp, với
-  `bilinear` ~1 ms. Trong lúc zoom/kéo dùng `bilinear`, dừng 0,3 s thì tự trả lại `hermite` để ảnh tĩnh mịn.
+  `bilinear` ~1 ms. Trong lúc zoom/kéo dùng `bilinear`, dừng 0,8 s thì tự trả lại `hermite` để ảnh tĩnh mịn.
 - **Giải mã bằng CPU nhiều luồng** (mặc định của mpv): đo trên CPU 16 luồng, video 9216x4690 giải mã 61 khung/s, đủ
   phát mượt 25 khung/s. Bản Windows build tĩnh, chỉ gồm `mpv.exe`/`mpv.com`, không cần cài thêm thư viện.
 

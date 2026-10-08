@@ -102,6 +102,8 @@ for property, key in pairs({ ["video-zoom"] = "zoom", ["video-align-x"] = "ax",
     end)
 end
 mp.observe_property("osd-dimensions", "native", function (_, value) dims = value end)
+local paused = false
+mp.observe_property("pause", "bool", function (_, value) paused = value end)
 mp.observe_property("video-params", "native", function (_, value) params = value end)
 mp.observe_property("mouse-pos", "native", function (_, value)
     if value then
@@ -136,11 +138,16 @@ end
 -- re-renders the whole frame, so the configured dscale is swapped for
 -- bilinear on the first step and restored after the view rests.
 local saved_scaling
-local restore_scaling_timer = mp.add_timeout(0.3, function ()
+-- Restoring hermite compiles a shader for the current zoom (~100 ms), which
+-- stalled a zoom started right then; waiting 0.8 s keeps back-to-back
+-- moves on the fast path.
+local restore_scaling_timer = mp.add_timeout(0.8, function ()
     if saved_scaling then
         mp.command_native_async({ "no-osd", "set", "dscale", saved_scaling.dscale }, function () end)
         mp.command_native_async({ "no-osd", "set", "correct-downscaling", saved_scaling.correct }, function () end)
-        mp.command_native_async({ "no-osd", "set", "video-sync", saved_scaling.video_sync }, function () end)
+        if saved_scaling.video_sync then
+            mp.command_native_async({ "no-osd", "set", "video-sync", saved_scaling.video_sync }, function () end)
+        end
         saved_scaling = nil
     end
 end)
@@ -178,9 +185,13 @@ local function view_moving()
             dscale = mp.get_property("dscale"),
             correct = mp.get_property("correct-downscaling"),
         }
-        saved_scaling.video_sync = mp.get_property("video-sync")
         mp.command_native_async({ "no-osd", "set", "dscale", "bilinear" }, function () end)
         mp.command_native_async({ "no-osd", "set", "correct-downscaling", "no" }, function () end)
+    end
+    -- Switching video-sync stalls the VO for ~140 ms, and while paused every
+    -- redraw is immediate anyway, so only do it during playback.
+    if not saved_scaling.video_sync and not paused then
+        saved_scaling.video_sync = mp.get_property("video-sync")
         -- While playing, the VO draws the next video frame ahead and sleeps
         -- until it is due, so view changes only show at the video frame rate
         -- (25 fps). Syncing to the display renders every vsync instead; it is
