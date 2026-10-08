@@ -1,226 +1,129 @@
-> **mpv-for-aoe**: bản fork của mpv chỉnh sẵn để xem lại video toàn bản đồ Age of Empires (lăn chuột zoom quanh con trỏ,
-> kéo chuột di chuyển). Hướng dẫn, tải về và danh sách thay đổi: [AOE-README.md](AOE-README.md).
-> Phần dưới đây là README gốc của mpv.
+# mpv-for-aoe
+
+**[⬇ Tải bản Windows mới nhất (mpv-for-aoe-win64.zip)](https://github.com/trandinhnamuet/mpv-for-aoe/releases/latest/download/mpv-for-aoe-win64.zip)**
+· [Các phiên bản trước](https://github.com/trandinhnamuet/mpv-for-aoe/releases)
+· [Kiểm tra file tải về](#kiểm-tra-file-tải-về)
+
+Trình phát video dựa trên [mpv](https://mpv.io), chỉnh sẵn để xem lại video toàn bản đồ Age of Empires do
+[AoE-MapCap](https://github.com/trandinhnamuet/AoEMapCap) ghi lại: lăn chuột để zoom vào đúng chỗ con trỏ, kéo
+chuột để di chuyển, zoom quá 1:1 vẫn giữ nét từng pixel của game. Giải nén là chạy, không cần cài đặt.
+
+## Vì sao fork mpv
+
+AoE-MapCap dựng video toàn bản đồ của cả trận đấu ở kích cỡ gốc của game, tới **9216x4690 px** (lớn hơn 8K). Muốn
+xem chuyện gì đang xảy ra ở một góc bản đồ thì phải zoom vào được chỗ bất kì trong video. Các trình phát thông dụng
+đều vướng:
+
+- **Phim & TV, Media Player của Windows**: thường từ chối video H.264 lớn cỡ này (vượt giới hạn level 6.2 của chuẩn).
+- **GPU** chỉ giải mã H.264 tới khoảng 4096 px ngang, nên mọi trình phát đều phải giải mã bằng CPU.
+- **VLC** giải mã được nhưng zoom bằng bộ lọc, thao tác bất tiện.
+- **mpv gốc** giải mã tốt và đã có zoom quanh con trỏ, nhưng mặc định phải giữ Ctrl khi lăn chuột, kéo chuột
+  không di chuyển được khung nhìn, phóng to làm nhoè pixel game. Sửa bằng file cấu hình cá nhân thì mỗi người phải
+  tự làm, khó chia sẻ cho nhiều người dùng.
+
+Fork để **mọi người tải về một file là dùng được ngay**, cùng một cách điều khiển, và **mã nguồn công khai** để ai
+cũng tự kiểm tra được bảo mật: mọi thay đổi so với mpv gốc nằm trong vài file, đánh dấu `[mpv-for-aoe]`, bản
+Windows do GitHub Actions build từ chính mã nguồn này.
+
+## Tính năng thêm
 
-![mpv logo](https://raw.githubusercontent.com/mpv-player/mpv.io/master/source/images/mpv-logo-128.png)
+| Thao tác | mpv gốc | mpv-for-aoe |
+|---|---|---|
+| Lăn chuột | Âm lượng | **Zoom vào / ra quanh con trỏ** (mỗi nấc ~19%) |
+| Ctrl + lăn chuột | Zoom quanh con trỏ | Zoom từng bước nhỏ (~3,5%) |
+| Giữ chuột trái và kéo | Kéo cửa sổ | **Di chuyển khung nhìn** khi đang zoom |
+| Bấm chuột giữa | Không làm gì | **Về toàn bản đồ** (bỏ zoom và di chuyển) |
+| Shift + lăn chuột | Không làm gì | Âm lượng |
+| Hết video | Đóng cửa sổ | Dừng ở khung cuối để xem kết quả trận |
+
+## Tối ưu và sửa lỗi
+
+- **Giữ nét pixel khi zoom quá 1:1**: phóng to dùng `nearest` thay cho `lanczos`, từng pixel game hiện thành ô vuông
+  sắc nét thay vì bị nhoè. Thu nhỏ (khi xem toàn bản đồ) vẫn dùng `hermite` mịn như mpv gốc; màu (chroma 4:2:0)
+  dùng `bilinear` để không bị vỡ khối màu.
+- **Giới hạn zoom** từ vừa cửa sổ tới 64 lần: lăn chuột ra không làm video nhỏ hơn cửa sổ.
+- **Sửa lỗi video nhảy sát mép**: video toàn bản đồ rộng hơn tỉ lệ màn hình 16:9 nên vừa khít chiều ngang cửa sổ;
+  mpv gốc khi đó chia cho 0 lúc kéo chuột hoặc zoom về mức ban đầu, làm khung nhìn nhảy sát mép.
+- **Sửa lỗi zoom bằng màn hình cảm ứng** (biến toạ độ chưa khởi tạo trong mpv gốc).
+- **Giải mã bằng CPU nhiều luồng** (mặc định của mpv): đo trên CPU 16 luồng, video 9216x4690 giải mã 61 khung/s, đủ
+  phát mượt 25 khung/s. Bản Windows build tĩnh, chỉ gồm `mpv.exe`/`mpv.com`, không cần cài thêm thư viện.
+
+## Hướng dẫn sử dụng
+
+### Cài đặt
+
+1. Tải [mpv-for-aoe-win64.zip](https://github.com/trandinhnamuet/mpv-for-aoe/releases/latest/download/mpv-for-aoe-win64.zip),
+   giải nén ra một thư mục bất kì.
+2. Kéo file video `.mp4` thả vào `mpv.exe`, hoặc chuột phải video > **Open with** > **Choose another app** > chọn
+   `mpv.exe` (đánh dấu "Always" nếu muốn mở mọi video bằng nó).
+
+Lần đầu chạy, Windows có thể hiện "Windows protected your PC" vì file chưa ký số: bấm **More info > Run anyway**.
+
+### Điều khiển
+
+| Thao tác | Tác dụng |
+|---|---|
+| Lăn chuột | Zoom vào / ra quanh vị trí con trỏ |
+| Ctrl + lăn chuột | Zoom từng bước nhỏ |
+| Giữ chuột trái và kéo | Di chuyển khung nhìn khi đang zoom |
+| Bấm chuột giữa / `Alt+Backspace` | Về toàn bản đồ |
+| Nhấp đúp chuột trái / `f` | Bật/tắt toàn màn hình |
+| Dấu cách | Dừng / phát |
+| Mũi tên trái / phải | Lùi / tới 5 giây |
+| Mũi tên lên / xuống | Tới / lùi 1 phút |
+| `.` và `,` | Tới / lùi từng khung hình (khi dừng) |
+| `[` và `]` | Giảm / tăng tốc độ phát; `Backspace` về tốc độ thường |
+| Shift + lăn chuột | Âm lượng |
+| `s` | Chụp ảnh khung hiện tại (ảnh đúng kích cỡ gốc của video) |
+| Chuột phải | Menu |
+| `q` | Thoát |
+
+Các phím khác giữ nguyên như mpv gốc: <https://mpv.io/manual/stable/#keyboard-control>.
+
+### Mẹo xem trận
+
+- Dừng (dấu cách) rồi zoom vào một trận giao tranh, dùng `.` để xem từng khung hình.
+- Tăng tốc độ bằng `]` để lướt nhanh giai đoạn đầu trận, `Backspace` để về tốc độ thường.
+- Tua tới đúng một thời điểm có thể mất vài giây với video 9216 px vì phải giải mã từ khung khoá gần nhất.
+
+### Tuỳ chỉnh
+
+Mọi tuỳ chọn vẫn đổi được như mpv gốc: đặt `mpv.conf` và `input.conf` trong thư mục `portable_config\` cạnh
+`mpv.exe` (zip có sẵn `portable_config\mpv.conf.example` để tham khảo). Ví dụ đổi bước zoom của lăn chuột, thêm vào
+`portable_config\input.conf`:
+
+```
+WHEEL_UP   script-binding positioning/cursor-centric-zoom  0.5
+WHEEL_DOWN script-binding positioning/cursor-centric-zoom -0.5
+```
+
+Muốn phóng to mịn như mpv gốc thay vì giữ ô pixel, thêm `scale=lanczos` vào `portable_config\mpv.conf`.
+
+## Kiểm tra file tải về
 
-# mpv
+Bản Windows được build hoàn toàn trên GitHub Actions
+([.github/workflows/aoe-release.yml](.github/workflows/aoe-release.yml)) từ mã nguồn công khai của repo này, bằng
+script build gốc của mpv `ci/build-mingw64-full.sh` trong container công khai `ghcr.io/btbn/ffmpeg-builds/win64-gpl`,
+không build trên máy cá nhân nào. Mỗi Release có chứng nhận nguồn gốc (build provenance) do GitHub ký:
 
+```
+gh attestation verify mpv-for-aoe-win64.zip -R trandinhnamuet/mpv-for-aoe
+gh attestation verify mpv.exe -R trandinhnamuet/mpv-for-aoe
+```
 
-* [External links](#external-links)
-* [Overview](#overview)
-* [System requirements](#system-requirements)
-* [Downloads](#downloads)
-* [Changelog](#changelog)
-* [Compilation](#compilation)
-* [Release cycle](#release-cycle)
-* [Bug reports](#bug-reports)
-* [Contributing](#contributing)
-* [License](#license)
-* [Contact](#contact)
+Lệnh trả về commit và lần chạy workflow đã tạo ra file. Mã băm SHA-256 nằm trong `SHA256SUMS.txt` (trong zip) và
+`mpv-for-aoe-win64.zip.sha256` (trên trang Release); `VERSION.txt` ghi commit nguồn.
 
+Toàn bộ thay đổi so với mpv gốc: `git diff upstream/master...aoe`, gồm `etc/input.conf`, `player/lua/positioning.lua`,
+`video/out/gpu/video.c`, `options/options.c`, workflow build và README này.
 
-## External links
+## Dành cho người duy trì
 
+- Nhánh `aoe` là nhánh chính của fork; `master` giữ nguyên như mpv gốc.
+- Mỗi lần đẩy lên `aoe`: GitHub build và lưu bản thử ở mục Actions > artifact.
+- Đăng phiên bản mới: `git tag aoe-v2 && git push origin aoe-v2`, workflow tự đăng Release kèm chứng nhận nguồn gốc.
+- Cập nhật từ mpv gốc ([mpv-player/mpv](https://github.com/mpv-player/mpv)): `git remote add upstream https://github.com/mpv-player/mpv` (một lần), rồi trên nhánh `aoe` chạy `git fetch upstream && git merge upstream/master`, đẩy lên và gắn tag mới.
 
-* [Wiki](https://github.com/mpv-player/mpv/wiki)
-* [User Scripts](https://github.com/mpv-player/mpv/wiki/User-Scripts)
-* [FAQ][FAQ]
-* [Manual](https://mpv.io/manual/master/)
+## Giấy phép
 
-
-## Overview
-
-
-**mpv** is a free (as in freedom) media player for the command line. It supports
-a wide variety of media file formats, audio and video codecs, and subtitle types.
-
-There is a [FAQ][FAQ].
-
-Releases can be found on the [release list][releases].
-
-## System requirements
-
-- A not too ancient Linux (usually, only the latest releases of distributions
-  are actively supported), Windows 10 1607 or later, or macOS 10.15 or later.
-- A somewhat capable CPU. Hardware decoding might help if the CPU is too slow to
-  decode video in realtime, but must be explicitly enabled with the `--hwdec`
-  option.
-- A not too crappy GPU. mpv's focus is not on power-efficient playback on
-  embedded or integrated GPUs (for example, hardware decoding is not even
-  enabled by default). Low power GPUs may cause issues like tearing, stutter,
-  etc. On such GPUs, it's recommended to use `--profile=fast` for smooth playback.
-  The main video output uses shaders for video rendering and scaling,
-  rather than GPU fixed function hardware. On Windows, you might want to make
-  sure the graphics drivers are current. In some cases, ancient fallback video
-  output methods can help (such as `--vo=xv` on Linux), but this use is not
-  recommended or supported.
-
-mpv does not go out of its way to break on older hardware or old, unsupported
-operating systems, but development is not done with them in mind. Keeping
-compatibility with such setups is not guaranteed. If things work, consider it
-a happy accident.
-
-## Downloads
-
-
-For semi-official builds and third-party packages please see
-[mpv.io/installation](https://mpv.io/installation/).
-
-## Changelog
-
-
-There is no complete changelog; however, changes to the player core interface
-are listed in the [interface changelog][interface-changes].
-
-Changes to the C API are documented in the [client API changelog][api-changes].
-
-The [release list][releases] has a summary of most of the important changes
-on every release.
-
-Changes to the default key bindings are indicated in
-[restore-old-bindings.conf][restore-old-bindings].
-
-Changes to the default OSC bindings are indicated in
-[restore-osc-bindings.conf][restore-osc-bindings].
-
-## Compilation
-
-
-Compiling with full features requires development files for several
-external libraries. Mpv requires [meson](https://mesonbuild.com/index.html)
-to build. Meson can be obtained from your distro or PyPI.
-
-After creating your build directory (e.g. `meson setup build`), you can view a list
-of all the build options via `meson configure build`. You could also just simply
-look at the `meson_options.txt` file. Logs are stored in `meson-logs` within
-your build directory.
-
-Example:
-
-    meson setup build
-    meson compile -C build
-    meson install -C build
-
-For libplacebo, meson can use a git check out as a subproject for a convenient
-way to compile mpv if a sufficient libplacebo version is not easily available
-in the build environment. It will be statically linked with mpv. Example:
-
-    mkdir -p subprojects
-    git clone https://code.videolan.org/videolan/libplacebo.git --depth=1 --recursive subprojects/libplacebo
-
-Essential dependencies (incomplete list):
-
-- gcc or clang
-- X development headers (xlib, xrandr, xext, xscrnsaver, xpresent, libvdpau,
-  libGL, GLX, EGL, xv, ...)
-- Audio output development headers (libasound/ALSA, pulseaudio)
-- FFmpeg libraries (libavutil libavcodec libavformat libswscale libavfilter
-  and either libswresample or libavresample)
-- libplacebo
-- zlib
-- iconv (normally provided by the system libc)
-- libass (OSD, OSC, text subtitles)
-- Lua (optional, required for the OSC pseudo-GUI and youtube-dl integration)
-- libjpeg (optional, used for screenshots only)
-- uchardet (optional, for subtitle charset detection)
-- nvdec and vaapi libraries for hardware decoding on Linux (optional)
-
-Libass dependencies (when building libass):
-
-- gcc or clang, nasm on x86 and x86_64
-- fribidi, freetype, fontconfig development headers (for libass)
-- harfbuzz (required for correct rendering of combining characters, particularly
-  for correct rendering of non-English text on macOS, and Arabic/Indic scripts on
-  any platform)
-
-FFmpeg dependencies (when building FFmpeg):
-
-- gcc or clang, nasm on x86 and x86_64
-- OpenSSL or GnuTLS (have to be explicitly enabled when compiling FFmpeg)
-- libx264/libmp3lame/libfdk-aac if you want to use encoding (have to be
-  explicitly enabled when compiling FFmpeg)
-- For native DASH playback, FFmpeg needs to be built with --enable-libxml2
-  (although there are security implications, and DASH support has lots of bugs).
-- AV1 decoding support requires dav1d.
-- For good nvidia support on Linux, make sure nv-codec-headers is installed
-  and can be found by configure.
-
-Most of the above libraries are available in suitable versions on normal
-Linux distributions. For ease of compiling the latest git master of everything,
-you may wish to use the separately available build wrapper ([mpv-build][mpv-build])
-which first compiles FFmpeg libraries and libass, and then compiles the player
-statically linked against those.
-
-If you want to build a Windows binary, see [Windows compilation][windows_compilation].
-
-
-## Release cycle
-
-Once or twice a year, a release is cut off from the current development state
-and is assigned a 0.X.0 version number. No further maintenance is done, except
-in the event of security issues.
-
-The goal of releases is to make Linux distributions happy. Linux distributions
-are also expected to apply their own patches in case of bugs.
-
-Releases other than the latest release are unsupported and unmaintained.
-
-See the [release policy document][release-policy] for more information.
-
-## Bug reports
-
-
-Please use the [issue tracker][issue-tracker] provided by GitHub to send us bug
-reports or feature requests. Follow the template's instructions or the issue
-will likely be ignored or closed as invalid.
-
-Questions can be asked in the [discussions][discussions] or on IRC (see
-[Contact](#Contact) below).
-
-## Contributing
-
-
-Please read [contribute.md][contribute.md].
-
-For small changes you can just send us pull requests through GitHub. For bigger
-changes come and talk to us on IRC before you start working on them. It will
-make code review easier for both parties later on.
-
-You can check [the wiki](https://github.com/mpv-player/mpv/wiki/Stuff-to-do)
-or the [issue tracker](https://github.com/mpv-player/mpv/issues?q=is%3Aopen+is%3Aissue+label%3Ameta%3Afeature-request)
-for ideas on what you could contribute with.
-
-## License
-
-GPLv2 "or later" by default, LGPLv2.1 "or later" with `-Dgpl=false`.
-See [details.](https://github.com/mpv-player/mpv/blob/master/Copyright)
-
-## History
-
-This software is based on the MPlayer project. Before mpv existed as a project,
-the code base was briefly developed under the mplayer2 project. For details,
-see the [FAQ][FAQ].
-
-## Contact
-
-
-Most activity happens on the IRC channel and the GitHub issue tracker.
-
-- **GitHub issue tracker**: [issue tracker][issue-tracker] (report bugs here)
-- **Discussions**: [discussions][discussions]
-- **User IRC Channel**: `#mpv` on `irc.libera.chat`
-- **Developer IRC Channel**: `#mpv-devel` on `irc.libera.chat`
-
-[FAQ]: https://github.com/mpv-player/mpv/wiki/FAQ
-[releases]: https://github.com/mpv-player/mpv/releases
-[mpv-build]: https://github.com/mpv-player/mpv-build
-[issue-tracker]:  https://github.com/mpv-player/mpv/issues
-[discussions]: https://github.com/mpv-player/mpv/discussions
-[release-policy]: https://github.com/mpv-player/mpv/blob/master/DOCS/release-policy.md
-[windows_compilation]: https://github.com/mpv-player/mpv/blob/master/DOCS/compile-windows.md
-[interface-changes]: https://github.com/mpv-player/mpv/blob/master/DOCS/interface-changes.rst
-[api-changes]: https://github.com/mpv-player/mpv/blob/master/DOCS/client-api-changes.rst
-[restore-old-bindings]: https://github.com/mpv-player/mpv/blob/master/etc/restore-old-bindings.conf
-[restore-osc-bindings]: https://github.com/mpv-player/mpv/blob/master/etc/restore-osc-bindings.conf
-[contribute.md]: https://github.com/mpv-player/mpv/blob/master/DOCS/contribute.md
+GPL v2 trở lên, như mpv (xem [LICENSE.GPL](LICENSE.GPL), [Copyright](Copyright)).
