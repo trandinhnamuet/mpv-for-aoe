@@ -55,7 +55,7 @@ jobs:
           NAME=mpv-for-aoe-win64
           mkdir -p "$NAME/portable_config"
           cp -p artifact/mpv.exe artifact/mpv.com artifact/LICENSE.GPL "$NAME/"
-          cp -p AOE-README.md "$NAME/README.md"
+          cp -p README.md "$NAME/README.md"
           cp -p etc/mpv.conf "$NAME/portable_config/mpv.conf.example"
           echo "mpv $VER" > "$NAME/VERSION.txt"
           echo "source: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.sha }}" >> "$NAME/VERSION.txt"
@@ -63,6 +63,14 @@ jobs:
           apt-get update -qq && apt-get install -y -qq zip > /dev/null
           zip -qr "$NAME.zip" "$NAME"
           sha256sum "$NAME.zip" | tee "$NAME.zip.sha256"
+          {
+            echo "Bản Windows của mpv-for-aoe, dựa trên mpv $VER, build từ commit ${{ github.sha }}."
+            echo
+            echo "Tải **$NAME.zip**, giải nén, kéo video vào \`mpv.exe\`. Hướng dẫn, danh sách thay đổi và cách kiểm tra file:"
+            echo "${{ github.server_url }}/${{ github.repository }}#readme"
+            echo
+            echo "SHA-256 của zip: \`$(cut -d' ' -f1 "$NAME.zip.sha256")\`"
+          } > release-notes.md
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
 
@@ -85,7 +93,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: mpv-for-aoe ${{ github.ref_name }} (mpv ${{ steps.pkg.outputs.version }})
-          body_path: AOE-README.md
+          body_path: release-notes.md
           files: |
             ${{ steps.pkg.outputs.name }}.zip
             ${{ steps.pkg.outputs.name }}.zip.sha256
